@@ -29,6 +29,7 @@ public class Interpreter{
 
     public static void main(String[] args) throws Exception{
         joinInZookeeper();
+        API.initial();
         int port = 8080;
         ServerSocket serverSocket = new ServerSocket(port);
         while(true){
@@ -57,7 +58,6 @@ public class Interpreter{
         }
         public void run(){
             try{
-                API.initial();
                 System.out.println("Start");
                 BufferedReader in = new BufferedReader(new java.io.InputStreamReader(socket.getInputStream()));
                 BufferedWriter out = new BufferedWriter(new java.io.OutputStreamWriter(socket.getOutputStream()));
@@ -505,7 +505,7 @@ public class Interpreter{
                 tabStr = myUtils.substring(statement, "from ", "");
                 Vector<TableRow> ret = API.select(tabStr, new Vector<>(), new Vector<>());
                 endTime = System.currentTimeMillis();
-                try{
+                try{   
                     myUtils.print_rows(ret, tabStr, writer);
                 }
                 catch (Exception e){
