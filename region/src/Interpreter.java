@@ -99,7 +99,7 @@ public class Interpreter{
 
 
                 case "excute":                        //执行sql语句
-                    System.out.println("excute");
+                    System.out.println("excute");    
                     if(request.split(":").length == 1){
                         out.write("error: no sql");
                         out.newLine();
@@ -168,32 +168,39 @@ public class Interpreter{
                             }
                         }
                     }
+                    moveOut.newLine();
                     moveOut.write("end");
-                    moveOut.close();
+                    moveOut.newLine();
+                    moveOut.flush();
+                    BufferedReader moveIn = new BufferedReader(new java.io.InputStreamReader(socket.getInputStream()));
+                    String line2;
+                    while((line2 = moveIn.readLine()) != null){
+                        if(line2.equals("end")){
+                            break;
+                        }
+                        System.out.println(line2);
+                    }
                     out.write("success");
                     out.newLine();
                     out.write("end");
                     out.newLine();
                     out.flush();
                     break;
-    
+
                 case "backup":                        //备份
                     System.out.println("backup");
                     String tableName1 = request.split(":")[1];
                     String backupSql = request.split(":")[2];
                     String filename1 = "tables/"+tableName1+".sql";
-                    File file1 = new File(filename1);
-                    BufferedWriter writer = new BufferedWriter(new FileWriter(file1));
+                    FileWriter writer = new FileWriter(filename1, true);
                     String[] lineall = backupSql.split(";");
                     for (int i = 0; i < lineall.length; i++) {
                         String nowsql = lineall[i];
-                        writer.write(nowsql + ";");
+                        writer.write(nowsql + ";\n");
                     }
                     writer.close();
-                    out.write("success");
-                    out.newLine();
-                    out.write("end");
                     break;
+
                 case "quit":
                     System.out.println("quit");
                     out.write("bye");
@@ -202,6 +209,7 @@ public class Interpreter{
                     out.newLine();
                     out.flush();
                     return;
+                    
                 default:
                     System.out.println("UNKNOWN");
                     out.write("UNKNOWN");
@@ -277,27 +285,24 @@ public class Interpreter{
                 BufferedReader in1 = new BufferedReader(new java.io.InputStreamReader(socket1.getInputStream()));
                 out1.write("backup:"+tokens[2]+":"+sql+";");
                 out1.newLine();
+                out1.write("end");
                 out1.flush();
-                out1.close();
                
                 Socket socket2 = new Socket(region2Ip,8080);
                 BufferedWriter out2 = new BufferedWriter(new java.io.OutputStreamWriter(socket2.getOutputStream()));
                 BufferedReader in2 = new BufferedReader(new java.io.InputStreamReader(socket2.getInputStream()));
                 out2.write("backup:"+tokens[2]+":"+sql+";");
                 out2.newLine();
+                out2.write("end");
                 out2.flush();
-                out2.close();
+
                 if(in1.readLine().equals("success")&&in2.readLine().equals("success")){
                     System.out.println("success");
                     writer.write("success");
                     writer.newLine();
-                    writer.write("end");
-                    writer.newLine();
                     writer.flush();
                 }
-                in1.close();
                 socket1.close();
-                in2.close();
                 socket2.close();
             }
         } catch (QException e) {
