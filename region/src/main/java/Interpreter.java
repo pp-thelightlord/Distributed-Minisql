@@ -1,9 +1,15 @@
 import java.io.*;
 import java.io.BufferedReader;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Vector;
@@ -11,6 +17,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.swing.plaf.synth.Region;
+
+import org.apache.curator.RetryPolicy;
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.retry.ExponentialBackoffRetry;
+import org.apache.zookeeper.CreateMode;
 
 import CATALOGMANAGER.Attribute;
 import CATALOGMANAGER.CatalogManager;
@@ -26,31 +38,80 @@ public class Interpreter{
 
     static String masterIp = "";
     static Map <String, List<String>> regionMap = new HashMap<String, List<String>>();
-
+    static String MasterIP = "172.20.10.6";
+    static String ZookeeperIP = "172.20.10.3:2181";
+    static Socket MasterSocket;
     public static void main(String[] args) throws Exception{
-        joinInZookeeper();
+        System.out.println("hello");
         API.initial();
+        //joinInZookeeper();
+        ipadd();
         int port = 8080;
         ServerSocket serverSocket = new ServerSocket(port);
         while(true){
             Socket socket = serverSocket.accept();
             new Thread(new task(socket)).start();
-        }  
+        }
+    }
+
+    public static String ipadd() throws Exception {
+        List<String> list = new LinkedList<>();
+        Enumeration enumeration = NetworkInterface.getNetworkInterfaces();
+        while (enumeration.hasMoreElements()) {
+            NetworkInterface network = (NetworkInterface) enumeration.nextElement();
+            if (network.isVirtual() || !network.isUp()) {
+                continue;
+            } else {
+                Enumeration addresses = network.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress address = (InetAddress) addresses.nextElement();
+                    if (address != null && (address instanceof Inet4Address || address instanceof Inet6Address)) {
+                        list.add(address.getHostAddress());
+                    }
+                }
+            }
+        }
+        for (String s : list) {
+            if (!s.contains("127")&&!s.contains("localhost")&&!s.contains("0:0:0:0:0:0:0:1")&&!s.contains("192.168")&&!s.contains(":")) {
+                System.out.println(s);
+                return s;
+            }
+        }
+        return list.get(0);
     }
 
     public static void joinInZookeeper() throws Exception{
-        // ZooKeeper zooKeeper = new ZooKeeper("localhost:2181", 5000, new Watcher() {
-        //     @Override
-        //     public void process(WatchedEvent watchedEvent) {
-        //         System.out.println("watchedEvent:" + watchedEvent);
-        //     }
-        // });
-        // zooKeeper.create("/master", "master".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
-        // zooKeeper.create("/region1", "region1".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
-        // zooKeeper.create("/region2", "region2".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
-        // zooKeeper.close();
+        RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000, 10);
+        CuratorFramework client =
+            CuratorFrameworkFactory.newClient(ZookeeperIP,retryPolicy);
+        client.start();
+        MasterSocket = new Socket(MasterIP,8086);
+        client.create().withMode(CreateMode.EPHEMERAL_SEQUENTIAL).forPath("/Distributed_Minisql/czr", ipadd().getBytes());
+        new Thread(new task(MasterSocket)).start();
+        //client.close();
     }
-    
+
+    // 返回本机IP地址字符串
+    public static String getHostAddress() {
+        try{
+            Enumeration<NetworkInterface> allNetInterfaces = NetworkInterface.getNetworkInterfaces();
+            while (allNetInterfaces.hasMoreElements()){
+                NetworkInterface netInterface = allNetInterfaces.nextElement();
+                Enumeration<InetAddress> addresses = netInterface.getInetAddresses();
+                while (addresses.hasMoreElements()){
+                    InetAddress ip = addresses.nextElement();
+                    if (ip instanceof Inet4Address && !ip.isLoopbackAddress() && !ip.getHostAddress().contains(":")){
+                        return ip.getHostAddress();
+                    }
+                }
+            }
+        }catch(Exception e){
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+
     static class task implements Runnable{
         private Socket socket;
         public task(Socket socket){
@@ -76,30 +137,50 @@ public class Interpreter{
             StringBuilder sb = new StringBuilder();
             String line;
             while((line = in.readLine()) != null){
+                System.out.println(line);
                 if(line.equals("end")){
                     break;
-                }                
+                }
                 sb.append(line);
             }
             String request = sb.toString();
+            System.out.println(request);
             String method = request.split(":")[0];
             switch(method){
                 case "region":
                     String tablename = request.split(":")[1];
-                    String region1Ip = request.split(":")[2];
-                    String region2Ip = request.split(":")[3];
+                    String region1Ip = request.split(":")[3];    
                     ArrayList<String> region = new ArrayList<String>();
                     region.add(region1Ip);
-                    region.add(region2Ip);
                     regionMap.put(tablename, region);
                     break;
 
-                case "died":
-                    joinInZookeeper();
 
+                case "execute_backup":                        //执行sql语句
+                    System.out.println("execute");
+                    if(request.split(":").length == 1){
+                        out.write("error: no sql");
+                        out.newLine();
+                        out.write("end");
+                        out.newLine();
+                        out.flush();
+                        break;
+                    }
+                    String tmp_backup = request.split(":")[1];
+                    String sql_backup = tmp_backup.trim().replaceAll("\\s+", " ");
 
-                case "excute":                        //执行sql语句
-                    System.out.println("excute");    
+                    String [] sql_array_backup = sql_backup.split(";");
+                    for(Integer i = 0; i < sql_array_backup.length; i++){
+                        System.out.println(sql_array_backup[i]);
+                        excuteSql(sql_array_backup[i],in,out,false);
+                    }
+                    out.write("end");
+                    out.newLine();
+                    out.flush();
+                    break;
+
+                case "execute":                        //执行sql语句
+                    System.out.println("execute");
                     if(request.split(":").length == 1){
                         out.write("error: no sql");
                         out.newLine();
@@ -110,7 +191,7 @@ public class Interpreter{
                     }
                     String tmp = request.split(":")[1];
                     String sql = tmp.trim().replaceAll("\\s+", " ");
-                   
+
                     String [] sql_array = sql.split(";");
                     for(Integer i = 0; i < sql_array.length; i++){
                         System.out.println(sql_array[i]);
@@ -120,7 +201,7 @@ public class Interpreter{
                     out.newLine();
                     out.flush();
                     break;
-    
+
                 case "detect":                        //检测可用性
                     System.out.println("detect");
                     out.write("ok");
@@ -129,32 +210,41 @@ public class Interpreter{
                     out.newLine();
                     out.flush();
                     break;
-    
-                case "doMove":                        //另一个region移动表
-                    // System.out.println("doMove");
-                    // String sqlAll = request.split(":")[1];
-                    // System.out.println(sqlAll);
-                    // String[] sqlArray = sqlAll.split(";");
-                    // System.out.println(sqlArray.length);
-                    // for (int i = 0; i < sqlArray.length; i++) {
-                    //     String nowsql = sqlArray[i];
-                    //     System.out.println(nowsql+";");
-                    //     excuteSql(nowsql,in,out);
-                    // }
-                    // out.write("success");
-                    // out.newLine();
-                    // out.write("end");
-                    // out.newLine();
-                    // out.flush();
-                    // break;
-    
+                    
+                case "copy":
+                    System.out.println("copy");
+                    String tableName_copy = request.split(":")[1];
+                    String regionName_copy = request.split(":")[2];
+                    System.out.print(regionName_copy);
+                    Socket socket_copy = new Socket(regionName_copy,8080);
+                    BufferedWriter moveOut_copy = new BufferedWriter(new java.io.OutputStreamWriter(socket_copy.getOutputStream()));
+                    String filename_copy = "tables/"+tableName_copy+".sql";
+                    BufferedReader reader_copy = new BufferedReader(new FileReader(filename_copy)); 
+                    String sql_copy = "";
+                    String line1_copy = "";
+                    while((line1_copy = reader_copy.readLine()) != null){
+                        sql_copy+=line1_copy;
+                    }
+                    moveOut_copy.write("backup:"+tableName_copy+":"+sql_copy);
+                    moveOut_copy.newLine();
+                    moveOut_copy.write("end");
+                    moveOut_copy.newLine();
+                    moveOut_copy.flush();
+
+                    out.write("end");
+                    out.newLine();
+                    out.flush();
+                    break;
+                
+
                 case "move":                          //master提示region移动表
                     System.out.println("move");
                     String tableName = request.split(":")[1];
                     String regionName = request.split(":")[2];
+                    System.out.print(regionName);
                     Socket socket = new Socket(regionName,8080);
                     BufferedWriter moveOut = new BufferedWriter(new java.io.OutputStreamWriter(socket.getOutputStream()));
-                    moveOut.write("excute:");
+                    moveOut.write("execute_backup:");
                     String filename = "tables/"+tableName+".sql";
                     File file = new File(filename);
                     BufferedReader reader = new BufferedReader(new FileReader(file));
@@ -209,7 +299,7 @@ public class Interpreter{
                     out.newLine();
                     out.flush();
                     return;
-                    
+
                 default:
                     System.out.println("UNKNOWN");
                     out.write("UNKNOWN");
@@ -219,11 +309,77 @@ public class Interpreter{
                     out.flush();
                     break;
             }
-        }        
+        }
     }
 
+    private static void excuteSql(String sql,BufferedReader reader, BufferedWriter writer, Boolean needbackup) throws IOException {
+        String [] tokens = sql.split(" ");
+        try {
+            if (tokens.length == 1 && tokens[0].equals(""))
+                throw new QException(0, 200, "No statement specified");
+            switch (tokens[0]) { //match keyword
+                case "create":
+                    if (tokens.length == 1)
+                        throw new QException(0, 201, "Can't find create object");
+                    switch (tokens[1]) {
+                        case "table":
+                            parse_create_table(sql, writer);
+                            break;
+                        case "index":
+                            parse_create_index(sql, writer);
+                            break;
+                        default:
+                            throw new QException(0, 202, "Can't identify " + tokens[1]);
+                    }
+                    break;
+                case "drop":
+                    if (tokens.length == 1)
+                        throw new QException(0, 203, "Can't find drop object");
+                    switch (tokens[1]) {
+                        case "table":
+                            parse_drop_table(sql, writer);
+                            break;
 
-    private static void excuteSql(String sql,BufferedReader reader, BufferedWriter writer) throws Exception{
+                        case "index":
+                            parse_drop_index(sql, writer);
+                            break;
+
+                        default:
+                            throw new QException(0, 204, "Can't identify " + tokens[1]);
+                    }
+                    break;
+                case "select":
+                    parse_select(sql, writer);
+                    break;
+                case "insert":
+                    parse_insert(sql, writer);
+                    break;
+                case "delete":
+                    parse_delete(sql, writer);
+                    break;
+                default:
+                    throw new QException(0, 205, "Can't identify " + tokens[0]);
+            }
+            if(!tokens[0].equals("select")){                   //不是select语句的全部备份
+                String filename = "tables/"+tokens[2]+".sql";
+                FileWriter filewriter = new FileWriter(filename, true);
+                filewriter.write(sql + ";\n");
+                filewriter.close();
+            }
+        } catch (QException e) {
+            System.out.println(e.status + " " + QException.ex[e.type] + ": " + e.msg);
+            writer.write(e.status + " " + QException.ex[e.type] + ": " + e.msg);
+            writer.newLine();
+            writer.flush();
+        } catch (Exception e) {
+            System.out.println("Default error: " + e.getMessage());
+            writer.write("Default error: " + e.getMessage());
+            writer.newLine();
+            writer.flush();
+        }
+    }
+
+    private static void excuteSql(String sql,BufferedReader reader, BufferedWriter writer) throws IOException {
         String [] tokens = sql.split(" ");
         try {
             if (tokens.length == 1 && tokens[0].equals(""))
@@ -278,32 +434,28 @@ public class Interpreter{
                 filewriter.close();
 
                 String region1Ip = regionMap.get(tokens[2]).get(0);
-                String region2Ip = regionMap.get(tokens[2]).get(1);
+                System.out.println(region1Ip);
+                // String region2Ip = regionMap.get(tokens[2]).get(1);
 
                 Socket socket1 = new Socket(region1Ip,8080);
+                System.out.println("Success connect to region1");
                 BufferedWriter out1 = new BufferedWriter(new java.io.OutputStreamWriter(socket1.getOutputStream()));
                 BufferedReader in1 = new BufferedReader(new java.io.InputStreamReader(socket1.getInputStream()));
+                System.out.println("ready to send");
                 out1.write("backup:"+tokens[2]+":"+sql+";");
                 out1.newLine();
+                System.out.println("end to send");
                 out1.write("end");
+                out1.newLine();
                 out1.flush();
-               
-                Socket socket2 = new Socket(region2Ip,8080);
-                BufferedWriter out2 = new BufferedWriter(new java.io.OutputStreamWriter(socket2.getOutputStream()));
-                BufferedReader in2 = new BufferedReader(new java.io.InputStreamReader(socket2.getInputStream()));
-                out2.write("backup:"+tokens[2]+":"+sql+";");
-                out2.newLine();
-                out2.write("end");
-                out2.flush();
 
-                if(in1.readLine().equals("success")&&in2.readLine().equals("success")){
+                if(in1.readLine().equals("success")){
                     System.out.println("success");
                     writer.write("success");
                     writer.newLine();
                     writer.flush();
                 }
                 socket1.close();
-                socket2.close();
             }
         } catch (QException e) {
             System.out.println(e.status + " " + QException.ex[e.type] + ": " + e.msg);
@@ -505,13 +657,13 @@ public class Interpreter{
                 tabStr = myUtils.substring(statement, "from ", "");
                 Vector<TableRow> ret = API.select(tabStr, new Vector<>(), new Vector<>());
                 endTime = System.currentTimeMillis();
-                try{   
+                try{
                     myUtils.print_rows(ret, tabStr, writer);
                 }
                 catch (Exception e){
                     throw new QException(0, 251, "Error in select all attributes");
                 }
-                
+
             } else { //select * from [] where [];
                 String[] conSet = conStr.split(" *and *");
                 //get condition vector
@@ -647,7 +799,7 @@ public class Interpreter{
             writer.flush();
         }
     }
-   
+
 }
 
 class myUtils {
