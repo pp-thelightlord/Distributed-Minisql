@@ -1,0 +1,6 @@
+{
+    "java.project.referencedLibraries": [
+        "lib/**/*.jar",
+        "Distributed-Client/lib/json-20220320.jar"
+    ]
+}

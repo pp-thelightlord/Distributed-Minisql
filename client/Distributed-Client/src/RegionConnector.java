@@ -97,21 +97,25 @@ public class RegionConnector {
                     }
                    
                     if(msg.startsWith("[")){
+                        System.out.println(">>> "+msg);
+                        msg=msg.replace("=", ":");
                         System.out.print(">>> \n");
                         // 解析select 返回的json串
                         JSONArray jsonArray = new JSONArray(msg);
                         Iterator iterator1 = jsonArray.getJSONObject(0).keys();
+                        System.out.print("\t|");
                         while(iterator1.hasNext()){
                             String key = (String)iterator1.next();
-                            System.out.print("|"+key);
+                            System.out.print(key+"|");
                         }
-                        System.out.println("|");
-                        System.out.print("--------------------\n");
+                         System.out.print("\n");
+                        // System.out.print("--------------------\n");
                         for(int i=0;i<jsonArray.length();i++){
                             Iterator iterator = jsonArray.getJSONObject(i).keys();
                             while(iterator.hasNext()){
                                 String key = (String)iterator.next();
-                                System.out.print("|"+jsonArray.getJSONObject(i).get(key));
+
+                                System.out.print("\t|"+jsonArray.getJSONObject(i).get(key));
                             }
                             System.out.println("|");
                         }
