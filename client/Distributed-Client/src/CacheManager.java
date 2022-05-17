@@ -11,40 +11,6 @@ public class CacheManager {
 
     }
 
-    // public static void main(String[] args) {
-    //     Scanner sc = new Scanner(System.in);
-    //     int type;
-    //     String table;
-    //     String ip;
-    //     int port;
-    //     while(true){
-    //         type=sc.nextInt();
-    //         switch(type){
-    //             case 1:
-    //                 table=sc.next();
-    //                 ip=sc.next();
-    //                 port=sc.nextInt();
-    //                 AddCache(table, new RegionInfo(ip, port));
-    //                 System.out.println("add success "+table+'\n'); 
-    //                 break;
-    //             case 2:
-    //                 table=sc.next();
-    //                 RegionInfo tmp=GetCache(table);
-    //                 if(tmp==null)
-    //                     System.out.println("do not have this cache"); 
-    //                 else  System.out.println(tmp.toString()); 
-    //                 break;
-    //             case 3:
-    //                 table=sc.next();
-    //                 System.out.println(DelCache(table)); 
-    //                 break;
-    //             case 4:
-    //                 System.out.println(System.currentTimeMillis());
-    //                 break;
-    //         }
-    //     }
-    // }
-
     public  boolean AddCache(String table,RegionInfo region){
         if(TableRegionList.size()>MaxCacheSize){
             ClearOldData();
@@ -57,7 +23,7 @@ public class CacheManager {
             ClearOldData();
         }
         RegionInfo info;
-        if(region=="unreachable"){
+        if(region.equals("unreachable")){
             info=new RegionInfo("0", 0,false);
         }
         else{

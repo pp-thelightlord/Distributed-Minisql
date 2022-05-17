@@ -2,15 +2,19 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.util.Iterator;
+
+import org.json.JSONArray;
 
 
 public class RegionConnector {
     
     private CacheManager cachemanager;
-   private MasterConnector masterconnector;
+    private MasterConnector masterconnector;
     public RegionConnector(CacheManager cache,MasterConnector master){
         cachemanager=cache;
         masterconnector=master;
@@ -49,8 +53,8 @@ public class RegionConnector {
             try {
                 socket=new Socket(ip,port);
                 
-            } catch (UnknownHostException e) {
-                System.out.println("the region"+ip+" "+port+"can not connect");
+            } catch (SocketException e) {
+                // System.out.println("您要连接的region"+ip+" "+port+"有误");
                 return false;
             } catch (IOException e) {
                 // TODO Auto-generated catch block
@@ -58,7 +62,7 @@ public class RegionConnector {
             }
             try {
                 cin = new BufferedReader(new java.io.InputStreamReader(socket.getInputStream()));
-            cout = new BufferedWriter(new java.io.OutputStreamWriter(socket.getOutputStream()));
+                cout = new BufferedWriter(new java.io.OutputStreamWriter(socket.getOutputStream()));
                 // cout=new DataOutputStream(socket.getOutputStream());
                 // cin=new DataInputStream(socket.getInputStream());
             } catch (IOException e) {
@@ -69,41 +73,63 @@ public class RegionConnector {
         }
         public void send(String str){
             try {
-                System.out.println("you will send: "+str);
-                // String sendstr=;
-                cout.write("excute:"+str);
+               
+                cout.write("execute:"+str);
                 cout.newLine();
                 cout.write("end");
                 cout.newLine();
-                // cout.writeUTF("excute:123");
-                // cout.writeUTF("\n"+"end");
+            
                 cout.flush();
             } catch (IOException e) {
-                // TODO Auto-generated catch block
                 e.printStackTrace();
             };
             
         }
-        //接收消息
+
         private void receive() {
             String msg ="";
            
             try {
-                // msg=cin.readUTF();
                 while( (msg = cin.readLine()) != null) {
                     if (msg.equals("end")) {
                         release();
                         break;
                     }
-                    System.out.println(msg);
+                   
+                    if(msg.startsWith("[")){
+                        System.out.print(">>> \n");
+                        // 解析select 返回的json串
+                        JSONArray jsonArray = new JSONArray(msg);
+                        Iterator iterator1 = jsonArray.getJSONObject(0).keys();
+                        while(iterator1.hasNext()){
+                            String key = (String)iterator1.next();
+                            System.out.print("|"+key);
+                        }
+                        System.out.println("|");
+                        System.out.print("--------------------\n");
+                        for(int i=0;i<jsonArray.length();i++){
+                            Iterator iterator = jsonArray.getJSONObject(i).keys();
+                            while(iterator.hasNext()){
+                                String key = (String)iterator.next();
+                                System.out.print("|"+jsonArray.getJSONObject(i).get(key));
+                            }
+                            System.out.println("|");
+                        }
+                    } 
+                    else if(msg.contains("Table")& msg.contains("not exist")){
+                        String[] msgstr=msg.split(" ");
+                        for(int i=0;i<msgstr.length;i++){
+                            if(msgstr[i].equals("Table")){
+                                cachemanager.DelCache(msgstr[i+1]);
+                                break;
+                            }
+                        }
+
+
+                    }
+                    else    System.out.println(">>> "+msg);
                 }
-                // msg=cin.readLine();
-                // msg=cin.read
-                // System.out.println("from region: "+msg);
-                // if(msg.isEmpty()==false){
-                //     System.out.println(msg);    
-                //     release();
-                // }
+                
                            
             } catch (IOException e) {
                  release();
@@ -122,7 +148,13 @@ public class RegionConnector {
         //释放资源
         public void release() {
             isRunning = false;
-            System.out.println("break socket connected with region");
+            try {
+                socket.close();
+            } catch (IOException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+            // System.out.println("已断开和该region的连接");
         }
     }
 }

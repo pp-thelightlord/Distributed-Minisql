@@ -4,7 +4,13 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.net.SocketException;
 import java.net.UnknownHostException;
+
+
+
+
+
 
 public class MasterConnector {
     private Socket socket=null;
@@ -17,25 +23,29 @@ public class MasterConnector {
     private CacheManager cachemanager;
    
     
-    public MasterConnector(CacheManager cache)throws IOException{
-        socket=new Socket(Host,Port);
-        cout = new BufferedWriter(new java.io.OutputStreamWriter(socket.getOutputStream()));
-        cin = new BufferedReader(new java.io.InputStreamReader(socket.getInputStream()));     
-        isRunning=true;
+    public MasterConnector(CacheManager cache){
+        
         cachemanager=cache;
-        new Thread(new Receive()).start();
     }
-    public  MasterConnector(CacheManager cache,String host,int port) throws UnknownHostException, IOException{
-        socket=new Socket(host,port);
+    public boolean  ConenctToMaster(String host,int port) throws IOException {
+        
+        try {
+            socket=new Socket(host,port);
+        } catch (SocketException e) {
+            System.out.println(">>> The IP and PORT you entered cannot be connected. Please re-enter!! ");
+            return false;
+           
+        }
+        
         cout = new BufferedWriter(new java.io.OutputStreamWriter(socket.getOutputStream()));
         cin = new BufferedReader(new java.io.InputStreamReader(socket.getInputStream()));
         isRunning=true;
-        cachemanager=cache;
+       
         new Thread(new Receive()).start();
+        return true;
     }
     public void send(String str){
         try {
-           
             cout.write(str);
             cout.newLine();
             cout.write("end");
@@ -49,7 +59,12 @@ public class MasterConnector {
     }
     public void release() {
         isRunning = false;
-        
+        try {
+            socket.close();
+        } catch (IOException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
     }
 
 
@@ -65,22 +80,19 @@ public class MasterConnector {
            
             try {
                 while( (msg = cin.readLine()) != null) {
-                    System.out.println("Test from server:"+msg);
                     if (msg.equals("end")) {
-                        release();
-                        break;
+                        // release();
+                        // break;
+                        continue;
                     }
                     if(msg.startsWith("<ip>:")){// 
                         String [] ips=msg.split(":");
-                        // System.out.println("i will add cache");
                         cachemanager.AddCache(ips[1], ips[2]);
-                        ///<ip>:tablename:ip
-                        //<ip>:tablename:unreachable
-
+                       
                     }
-                    else  System.out.println(msg);
+                    
+                    else System.out.println(">>> "+msg);
                 }
-               
                
             } catch (IOException e) {
                 
