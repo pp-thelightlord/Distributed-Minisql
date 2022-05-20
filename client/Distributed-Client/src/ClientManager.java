@@ -41,8 +41,12 @@ public class ClientManager {
         do{
             System.out.println(">>> Please enter server's IP:");
             ip=console.next();
+            if(ip.startsWith("quit;")){
+                System.exit(0);    
+            }
             System.out.println(">>> Please enter server's PORT:");
             port=console.nextInt();
+           
         }while(masterconnector.ConenctToMaster(ip, port)==false);
         System.out.println(">>> Successfully connected to the master!!! You can use Distributed-MiniSQL now");
         regionconnector=new RegionConnector(cachemanager,masterconnector);
