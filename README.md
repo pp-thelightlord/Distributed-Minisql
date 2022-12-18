@@ -1,2 +1,2 @@
 # Distributed-Minisql
- A torturous project of ZJU SE
+ A course project of ZJU SE
